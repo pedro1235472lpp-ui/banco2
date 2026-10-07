@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="utf-8"><title>BancoCraft RP</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0b0f0c;--card:#141c16;--bd:#25382b;--tx:#e8f2ea;--mut:#8aa392;--g:#2ecc5a;--gold:#f5c542;--red:#ff5d5d;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:light){:root:not([data-theme="dark"]){--bg:#eef4ef;--card:#fff;--bd:#cfe0d3;--tx:#12201a;--mut:#51675a;--g:#1a9a40;--gold:#a87b00;--red:#d03030}}
+*{box-sizing:border-box}html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px system-ui,sans-serif}
+#app{max-width:760px;margin:0 auto;padding:14px 14px 90px}
+.logo{display:flex;align-items:center;gap:10px;justify-content:center;font-family:'Press Start 2P',monospace;font-size:15px;color:var(--g)}
+.logo b{color:var(--gold)}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px;margin:10px 0}
+.bal{background:linear-gradient(135deg,#0f3a1c,#07110a);border:2px solid var(--gold);color:#fff;text-align:center;padding:22px 10px}
+.bal h1{font-family:'Press Start 2P',monospace;font-size:22px;color:var(--gold);margin:8px 0;word-break:break-all}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
+button,.btn{background:var(--g);color:#05160a;border:0;border-radius:8px;padding:11px 14px;font-weight:700;font-size:15px;cursor:pointer}
+button.alt{background:transparent;color:var(--g);border:1px solid var(--g)}button.red{background:var(--red);color:#fff}button.gold{background:var(--gold)}
+.tile{background:var(--card);color:var(--tx);border:1px solid var(--bd);padding:16px 8px;text-align:center}
+input,select{width:100%;padding:11px;margin:5px 0 9px;background:var(--bg);color:var(--tx);border:1px solid var(--bd);border-radius:8px;font-size:15px}
+label{font-size:12px;color:var(--mut)}
+nav{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--bd);display:flex;justify-content:center;padding:6px 4px calc(6px + env(safe-area-inset-bottom,0px))}
+nav button{background:none;color:var(--mut);flex:1;max-width:110px;padding:8px 2px;font-size:12px}nav button.on{color:var(--g)}
+.row{display:flex;justify-content:space-between;gap:8px;padding:9px 0;border-bottom:1px solid var(--bd);font-size:13px}
+.in{color:var(--g)}.out{color:var(--red)}.mut{color:var(--mut);font-size:12px}.err{color:var(--red);margin:6px 0}.ok{color:var(--g)}
+.scroll{overflow-x:auto}h2{margin:6px 0;font-size:17px}.tag{background:var(--gold);color:#000;border-radius:4px;padding:1px 6px;font-size:11px}
+</style></head><body><div id="app">Carregando…</div><nav id="nav"></nav>
+<script>
+const $=s=>document.querySelector(s),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt=n=>Number(n).toLocaleString('pt-BR')+' Coins',dt=t=>new Date(t).toLocaleString('pt-BR');
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+const DEF={pix:0,tr:2,notices:[],prods:[{id:'p1',name:'Poupança RP',days:30,rate:3,risk:0},{id:'p2',name:'Investimento Seguro',days:15,rate:5,risk:0},{id:'p3',name:'Investimento Médio',days:15,rate:12,risk:10},{id:'p4',name:'Investimento Arriscado',days:7,rate:30,risk:50}]};
+const CFG={apiKey:'COLE_AQUI',authDomain:'COLE_AQUI',projectId:'COLE_AQUI',appId:'COLE_AQUI'};
+let S={acc:[],tx:[],inv:[],log:[],cfg:DEF,me:null,view:'home',msg:'',err:'',draft:null,receipt:null,adm:'acc',sel:null,q:''},db,C;
+const col=n=>db.collection(n),A=id=>col('accounts').doc(id);
+const hash=async(p,s)=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s+':'+p)))].map(b=>b.toString(16).padStart(2,'0')).join('');
+const me=()=>S.acc.find(a=>a.id===S.me)||null,isAdm=()=>me()?.admin,byRef=k=>{k=k.trim().toLowerCase();return S.acc.find(a=>a.id.toLowerCase()===k||a.name.toLowerCase()===k||a.char.toLowerCase()===k)};
+function put(k,v){try{sessionStorage.setItem(k,v)}catch(e){}}function getS(k){try{return sessionStorage.getItem(k)}catch(e){return null}}
+const AH='8c6751bd52bf0a31eb6de8bbc9ada9b7ecd96a64b76d48f7085c84c7cbda6e60';
+function go(v){if(S.view==='adm'&&v!=='adm')S.admOk=false;S.view=v;S.err='';S.msg='';S.draft=null;S.receipt=null;S.sel=null;render()}
+function fail(e){S.err=typeof e==='string'?e:(e?.message||'Erro');render()}
+async function init(){
+ try{if(CFG.apiKey.startsWith('COLE')){$('#app').innerHTML='<div class="card">Falta colar as chaves do Firebase no início do script (CFG).</div>';return}
+ firebase.initializeApp(CFG);await firebase.auth().signInAnonymously();const fs=firebase.firestore();
+ const snap=d=>({id:d.id,exists:d.exists,data:()=>d.data()}),dref=p=>({get:async()=>snap(await fs.doc(p).get()),set:d=>fs.doc(p).set(d),update:d=>fs.doc(p).update(d),onSnapshot:f=>fs.doc(p).onSnapshot(d=>f(snap(d)))});
+ db={collection:n=>({doc:id=>dref(n+'/'+id),onSnapshot:f=>fs.collection(n).onSnapshot(q=>f({docs:q.docs.map(snap),docChanges:()=>q.docChanges().map(c=>({type:c.type,doc:snap(c.doc)}))}))})}}catch(e){$('#app').innerHTML='<div class="card">Erro ao conectar: '+esc(e.message)+'</div>';return}
+ if(!db){$('#app').innerHTML='<div class="card">Banco de dados indisponível.</div>';return}
+ let n=0;const tick=()=>{if(++n>=4&&!S.ready){S.ready=true;const s=getS('bc_s');if(s){const [id,exp]=s.split('|');if(+exp>Date.now()&&S.acc.find(a=>a.id===id))S.me=id}}render()};
+ col('accounts').onSnapshot(q=>{S.acc=q.docs.map(d=>({id:d.id,...d.data()}));tick();S.ready&&render()});
+ col('tx').onSnapshot(q=>{if(S.ready&&me()?.admin)q.docChanges().forEach(c=>{if(c.type==='added'&&c.doc.data().ts>Date.now()-15000){const t=c.doc.data();S.toast=`🔔 ${TY[t.type]||t.type}: ${fmt(t.amt)} (${t.fromName} → ${t.toName})`;setTimeout(()=>{S.toast='';render()},6000)}});S.tx=q.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>b.ts-a.ts);tick();S.ready&&render()});
+ col('invs').onSnapshot(q=>{S.inv=q.docs.map(d=>({id:d.id,...d.data()}));tick();S.ready&&render()});
+ col('logs').onSnapshot(q=>{S.log=q.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>b.ts-a.ts);tick();S.ready&&render()});
+ col('cfg').doc('main').onSnapshot(d=>{S.cfg={...DEF,...(d.data()||{})};S.ready&&render()});
+ setTimeout(()=>{if(!S.ready){S.ready=true;render()}},2500);
+}
+const logo=()=>`<div class="logo"><svg width="34" height="34" viewBox="0 0 8 8"><rect width="8" height="8" fill="#5b3a1e"/><rect width="8" height="3" fill="#2ecc5a"/><rect x="1" y="1" width="2" height="2" fill="#1a9a40"/><rect x="5" y="4" width="2" height="2" fill="#f5c542"/></svg><span>Banco<b>Craft</b> RP</span></div>`;
+async function register(){
+ const u=$('#u').value.trim(),p=$('#p').value,ch=$('#c').value.trim();
+ if(u.length<3||p.length<4||!ch)return fail('Preencha usuário (3+), personagem e senha (4+).');
+ if(S.acc.some(a=>a.name.toLowerCase()===u.toLowerCase()))return fail('Usuário já existe.');
+ const salt=uid(),code=Math.random().toString(36).slice(2,8).toUpperCase(),id=nextId();
+ await A(id).set({name:u,char:ch,salt,ph:await hash(p,salt),rh:await hash(code,salt),bal:0,admin:S.acc.length===0,blocked:false,created:Date.now()});
+ S.msg=`Conta criada! ID ${id}. CÓDIGO DE RECUPERAÇÃO: ${code} (anote!)`+(S.acc.length===0?' Você é o administrador.':'');S.view='login';render()}
+const nextId=()=>'BC-'+(Math.max(1000,...S.acc.map(a=>+a.id.slice(3)||0))+1);
+async function login(){const a=S.acc.find(x=>x.name.toLowerCase()===$('#u').value.trim().toLowerCase());
+ if(!a||a.ph!==await hash($('#p').value,a.salt))return fail('Usuário ou senha inválidos.');
+ if(a.blocked)return fail('Conta bloqueada pelo administrador.');
+ S.me=a.id;put('bc_s',a.id+'|'+(Date.now()+30*60000));S.view='home';S.err='';render()}
+function logout(){S.admOk=false;S.me=null;put('bc_s','');S.view='login';render()}
+async function recover(){const a=S.acc.find(x=>x.name.toLowerCase()===$('#u').value.trim().toLowerCase()),np=$('#p').value;
+ if(!a||np.length<4||a.rh!==await hash($('#c').value.trim().toUpperCase(),a.salt))return fail('Dados inválidos.');
+ await A(a.id).update({ph:await hash(np,a.salt)});S.msg='Senha alterada. Faça login.';S.view='login';render()}
+async function admUnlock(){if(await hash($('#ap').value,'bcadm')===AH){S.admOk=true;S.err='';if(!me().admin)try{await A(S.me).update({admin:true})}catch(e){}}else S.err='Senha do painel incorreta.';render()}
+function admLock(){go('home')}
+async function log(action,detail){await col('logs').doc(uid()).set({ts:Date.now(),by:me().name,action,detail})}
+async function addTx(t){const d={ts:Date.now(),fee:0,msg:'',ref:'',...t};await col('tx').doc(d.id||uid()).set(d)}
+async function fresh(id){const s=await A(id).get();if(!s.exists)throw'Conta não encontrada';return s.data()}
+function prep(kind){const r=byRef($('#to').value),amt=Math.floor(+$('#amt').value);
+ if(!r)return fail('Jogador não encontrado.');if(r.id===S.me)return fail('Não é possível enviar para si mesmo.');
+ if(!(amt>0))return fail('Informe um valor válido.');
+ const fee=Math.floor(amt*(kind==='pix'?S.cfg.pix:S.cfg.tr)/100);
+ if(amt+fee>me().bal)return fail('Saldo insuficiente.');
+ S.draft={kind,to:r.id,amt,fee,msg:$('#msg').value.trim(),nonce:uid()};S.err='';render()}
+async function commit(){const d=S.draft;if(!d||d.busy)return;d.busy=1;
+ try{const [s,r]=await Promise.all([fresh(S.me),fresh(d.to)]),tot=d.amt+d.fee;
+  if(s.blocked||r.blocked)throw'Conta bloqueada.';if(s.bal<tot)throw'Saldo insuficiente.';
+  if((await col('tx').doc(d.nonce).get()).exists)throw'Transação duplicada.';
+  const bf=s.bal-tot,bt=r.bal+d.amt;
+  await addTx({id:d.nonce,type:d.kind,from:S.me,fromName:s.char,to:d.to,toName:r.char,amt:d.amt,fee:d.fee,msg:d.msg,balFrom:bf,balTo:bt});
+  await A(S.me).update({bal:bf});await A(d.to).update({bal:bt});
+  S.receipt={...d,toName:r.char,toId:d.to};S.draft=null;render()}catch(e){d.busy=0;fail(e)}}
+async function adjust(id,delta,type,msg){const a=await fresh(id),nb=a.bal+delta;if(nb<0)throw'Saldo não pode ficar negativo.';
+ await addTx(delta>0?{type,from:'BANCO',fromName:'BANCO',to:id,toName:a.char,amt:delta,msg,balFrom:0,balTo:nb}:{type,from:id,fromName:a.char,to:'BANCO',toName:'BANCO',amt:-delta,msg,balFrom:nb,balTo:0});
+ await A(id).update({bal:nb});return nb}
+async function admBal(mode){try{const id=S.sel,v=Math.floor(+$('#av').value);if(!(v>=0))throw'Valor inválido';
+ const a=S.acc.find(x=>x.id===id);let d=mode==='add'?v:mode==='rem'?-v:v-a.bal;if(!d)throw'Sem alteração';
+ await adjust(id,d,d>0?'deposito':'saque',mode==='set'?'Saldo ajustado':'Operação admin');await log('saldo',`${mode} ${v} em ${id}`);S.msg='Feito.';render()}catch(e){fail(e)}}
+async function admAcc(f){try{const id=S.sel;if(f==='blk'){const b=!S.acc.find(a=>a.id===id).blocked;await A(id).update({blocked:b});await log(b?'bloquear':'desbloquear',id)}
+ if(f==='adm'){const b=!S.acc.find(a=>a.id===id).admin;await A(id).update({admin:b});await log('admin',`${id}=${b}`)}
+ if(f==='ren'){await A(id).update({name:$('#rn').value.trim(),char:$('#rc').value.trim()});await log('renomear',id)}
+ S.msg='Feito.';render()}catch(e){fail(e)}}
+async function admCreate(){try{const u=$('#nu').value.trim(),c=$('#nc').value.trim(),p=$('#np').value;if(!u||!c||p.length<4)throw'Preencha tudo (senha 4+).';
+ if(S.acc.some(a=>a.name.toLowerCase()===u.toLowerCase()))throw'Usuário já existe.';const salt=uid(),id=nextId();
+ await A(id).set({name:u,char:c,salt,ph:await hash(p,salt),rh:await hash('RESET',salt),bal:0,admin:false,blocked:false,created:Date.now()});await log('criar conta',id);S.msg='Criada: '+id;render()}catch(e){fail(e)}}
+async function cancelTx(id){try{const t=S.tx.find(x=>x.id===id);if(S.tx.some(x=>x.ref===id))throw'Já cancelada.';if(t.type==='estorno')throw'Estornos não podem ser cancelados.';
+ if(t.to!=='BANCO')await adjust(t.to,-t.amt,'estorno','Estorno de '+id);
+ if(t.from!=='BANCO')await adjust(t.from,t.amt+t.fee,'estorno','Estorno de '+id);
+ await addTx({type:'estorno',ref:id,from:t.to,fromName:t.toName,to:t.from,toName:t.fromName,amt:t.amt,msg:'Cancelamento',balFrom:0,balTo:0});await log('cancelar tx',id);render()}catch(e){fail(e)}}
+async function saveCfg(){const c={...S.cfg,pix:+$('#fp').value||0,tr:+$('#ft').value||0};
+ c.prods=S.cfg.prods.map(p=>({...p,days:+$('#d'+p.id).value,rate:+$('#r'+p.id).value,risk:+$('#k'+p.id).value}));await col('cfg').doc('main').set(c);await log('config','taxas/investimentos');S.msg='Salvo.';render()}
+async function notice(){const t=$('#nt').value.trim();if(!t)return;await col('cfg').doc('main').set({...S.cfg,notices:[{t,ts:Date.now()},...S.cfg.notices].slice(0,10)});await log('comunicado',t);render()}
+async function invest(pid){try{const p=S.cfg.prods.find(x=>x.id===pid),v=Math.floor(+$('#iv'+pid).value);if(!(v>0))throw'Valor inválido';
+ const a=await fresh(S.me);if(a.bal<v)throw'Saldo insuficiente.';const id=uid(),nb=a.bal-v;
+ await col('invs').doc(id).set({u:S.me,pid,name:p.name,amt:v,rate:p.rate,start:Date.now(),end:Date.now()+p.days*864e5,st:'ativo',win:Math.random()*100>=p.risk,risk:p.risk});
+ await addTx({type:'invest',from:S.me,fromName:a.char,to:'BANCO',toName:'BANCO',amt:v,msg:p.name,balFrom:nb,balTo:0});await A(S.me).update({bal:nb});S.msg='Investimento aplicado!';render()}catch(e){fail(e)}}
+async function redeem(id){try{const i=S.inv.find(x=>x.id===id);if(i.st!=='ativo')return;const done=Date.now()>=i.end;
+ const pay=!done?i.amt:i.win?Math.floor(i.amt*(1+i.rate/100)):Math.floor(i.amt*(1-i.risk/200));
+ await col('invs').doc(id).update({st:'resgatado',pay});const a=await fresh(S.me),nb=a.bal+pay;
+ await addTx({type:'resgate',from:'BANCO',fromName:'BANCO',to:S.me,toName:a.char,amt:pay,msg:i.name+(done?'':' (antecipado)'),balFrom:0,balTo:nb});await A(S.me).update({bal:nb});S.msg='Resgatado: '+fmt(pay);render()}catch(e){fail(e)}}
+async function saveProf(){try{const n=$('#pn').value.trim(),c=$('#pc').value.trim();if(!n||!c)throw'Preencha os campos.';
+ if(S.acc.some(a=>a.id!==S.me&&a.name.toLowerCase()===n.toLowerCase()))throw'Nome já em uso.';await A(S.me).update({name:n,char:c});S.msg='Perfil salvo.';render()}catch(e){fail(e)}}
+const TY={pix:'PIX',transfer:'Transferência',deposito:'Depósito',saque:'Saque',invest:'Investimento',resgate:'Resgate',estorno:'Estorno'};
+function txRows(list,id){return list.map(t=>{const out=t.from===id,v=out?t.amt+(t.fee||0):t.amt;const bal=out?t.balFrom:t.balTo;
+ return `<div class="row"><div><b>${TY[t.type]||t.type}</b> <span class="mut">${dt(t.ts)}</span><br><span class="mut">${esc(t.fromName)} → ${esc(t.toName)}${t.msg?' · '+esc(t.msg):''}${S.tx.some(x=>x.ref===t.id)?' · <span class="out">cancelada</span>':''}</span></div><div style="text-align:right" class="${out?'out':'in'}">${out?'−':'+'}${fmt(v)}<br><span class="mut">Saldo: ${fmt(bal)}</span></div></div>`}).join('')||'<div class="mut">Sem movimentações.</div>'}
+function authView(){const v=S.view,m=S.msg?`<div class="card ok">${esc(S.msg)}</div>`:'',e=S.err?`<div class="err">${esc(S.err)}</div>`:'';
+ const f=(extra,btn,act)=>`<div class="card"><label>Usuário</label><input id="u" autocomplete="username">${extra}${e}<button style="width:100%" onclick="${act}">${btn}</button></div>`;
+ let h=logo()+'<div style="height:14px"></div>'+m;
+ if(v==='reg')h+=f('<label>Nome do personagem</label><input id="c"><label>Senha</label><input id="p" type="password">','Criar conta','register()')+'<button class="alt" onclick="go(\'login\')">Voltar</button>';
+ else if(v==='rec')h+=f('<label>Código de recuperação</label><input id="c"><label>Nova senha</label><input id="p" type="password">','Redefinir senha','recover()')+'<button class="alt" onclick="go(\'login\')">Voltar</button>';
+ else h+=f('<label>Senha</label><input id="p" type="password" autocomplete="current-password">','Entrar','login()')+'<div class="grid"><button class="alt" onclick="go(\'reg\')">Criar conta</button><button class="alt" onclick="go(\'rec\')">Recuperar senha</button></div>';
+ return h+'<p class="mut" style="text-align:center">Dinheiro 100% fictício · somente para RP de Minecraft</p>'}
+function sendView(k){const a=me(),e=S.err?`<div class="err">${esc(S.err)}</div>`:'';
+ if(S.receipt){const r=S.receipt;return `<div class="card" style="border-color:var(--g)"><h2 class="ok">${r.kind==='pix'?'PIX enviado':'Transferência realizada'} com sucesso!</h2><div>Valor: ${fmt(r.amt)}</div><div>Taxa: ${fmt(r.fee)}</div><div>Destinatário: ${esc(r.toName)}</div><div>ID: ${esc(r.toId)}</div>${r.msg?`<div>Mensagem: ${esc(r.msg)}</div>`:''}<div class="mut">${dt(Date.now())}</div><button style="margin-top:10px" onclick="go('home')">Voltar</button></div>`}
+ if(S.draft){const d=S.draft,t=S.acc.find(x=>x.id===d.to);return `<div class="card"><h2>Confirmar ${k==='pix'?'PIX':'transferência'}</h2><div class="row"><span>Remetente</span><b>${esc(a.char)} (${a.id})</b></div><div class="row"><span>Destinatário</span><b>${esc(t.char)} (${t.id})</b></div><div class="row"><span>Valor</span><b>${fmt(d.amt)}</b></div><div class="row"><span>Taxa</span><b>${fmt(d.fee)}</b></div><div class="row"><span>Valor final</span><b class="out">${fmt(d.amt+d.fee)}</b></div>${e}<div class="grid"><button onclick="commit()">Confirmar</button><button class="alt" onclick="S.draft=null;render()">Editar</button></div></div>`}
+ return `<div class="card"><h2>${k==='pix'?'PIX fictício':'Transferir'}</h2><p class="mut">Taxa: ${k==='pix'?S.cfg.pix:S.cfg.tr}% · Para receber, informe seu ID <b>${a.id}</b></p><label>Nome ou ID do destinatário</label><input id="to" placeholder="BC-1002"><label>Valor (Coins)</label><input id="amt" type="number" min="1"><label>${k==='pix'?'Mensagem':'Descrição'}</label><input id="msg" maxlength="80">${e}<button style="width:100%" onclick="prep('${k}')">Continuar</button></div>`}
+function home(){const a=me(),n=S.cfg.notices[0];
+ return `${n?`<div class="card"><span class="tag">Comunicado</span> ${esc(n.t)}</div>`:''}<div class="card bal"><div class="mut">Olá, ${esc(a.char)} · ${a.id}</div><h1>${fmt(a.bal)}</h1><div class="mut">Saldo atual</div></div>
+ <div class="grid">${[['pix','⚡ PIX'],['transfer','↔ Transferir'],['dep','⬇ Depositar'],['saq','⬆ Sacar'],['inv','📈 Investimentos'],['ext','📜 Extrato'],['perf','👤 Perfil']].map(x=>`<button class="tile" onclick="go('${x[0]}')">${x[1]}</button>`).join('')}</div>
+ <div class="card"><h2>Últimas movimentações</h2>${txRows(S.tx.filter(t=>t.from===a.id||t.to===a.id).slice(0,5),a.id)}</div>`}
+function invView(){const a=me(),mine=S.inv.filter(i=>i.u===a.id).sort((x,y)=>y.start-x.start),e=S.err?`<div class="err">${esc(S.err)}</div>`:'';
+ return (S.msg?`<div class="card ok">${esc(S.msg)}</div>`:'')+e+S.cfg.prods.map(p=>`<div class="card"><b>${esc(p.name)}</b> <span class="mut">${p.days} dias · ${p.rate}% ${p.risk?`· risco de ${p.risk}% de perda`:''}</span><div class="grid" style="margin-top:6px"><input id="iv${p.id}" type="number" min="1" placeholder="Valor"><button onclick="invest('${p.id}')">Aplicar</button></div></div>`).join('')+
+ `<div class="card"><h2>Meus investimentos</h2>${mine.map(i=>`<div class="row"><div><b>${esc(i.name)}</b><br><span class="mut">Aplicado: ${fmt(i.amt)} · ${i.rate}%<br>Rend. estimado: ${fmt(Math.floor(i.amt*i.rate/100))}<br>Vence: ${dt(i.end)}</span></div><div style="text-align:right">${i.st==='ativo'?`<button class="${Date.now()>=i.end?'gold':'alt'}" onclick="redeem('${i.id}')">${Date.now()>=i.end?'Resgatar':'Resgate antecipado'}</button>`:`<span class="mut">Resgatado<br>${fmt(i.pay)}</span>`}</div></div>`).join('')||'<div class="mut">Nenhum ainda.</div>'}</div>`}
+function profView(){const a=me();return `<div class="card"><h2>Perfil</h2><div class="mut">ID: ${a.id}${a.admin?' · <span class="tag">ADMIN</span>':''}</div><label>Nome da conta</label><input id="pn" value="${esc(a.name)}"><label>Nome do personagem</label><input id="pc" value="${esc(a.char)}">${S.msg?`<div class="ok">${esc(S.msg)}</div>`:''}${S.err?`<div class="err">${esc(S.err)}</div>`:''}<div class="grid"><button onclick="saveProf()">Salvar</button><button class="alt" onclick="logout()">Sair</button></div></div>`}
+const seen=()=>+(localStorage.getItem('bc_seen')||0),unread=()=>{try{return S.tx.filter(t=>t.ts>seen()).length}catch(e){return 0}};
+function receiptCard(t){return `<div class="card" style="border-color:var(--g)"><b class="ok">${t.type==='pix'?'PIX enviado com sucesso!':'Comprovante: '+(TY[t.type]||t.type)}</b><div>Valor: ${fmt(t.amt)}</div><div>Taxa: ${fmt(t.fee||0)}</div><div>Remetente: ${esc(t.fromName)} (${esc(t.from)})</div><div>Destinatário: ${esc(t.toName)}</div><div>ID: ${esc(t.to)}</div>${t.msg?`<div>Mensagem: ${esc(t.msg)}</div>`:''}<div class="mut">${dt(t.ts)} · ${esc(t.id)}</div></div>`}
+function admView(){if(!S.admOk)return `<div class="card"><h2>🛡 Painel administrador</h2><label>Senha do painel</label><input id="ap" type="password" onkeydown="if(event.key==='Enter')admUnlock()">${S.err?`<div class="err">${esc(S.err)}</div>`:''}<button style="width:100%" onclick="admUnlock()">Entrar no painel</button></div>`;
+ const t=S.adm,tabs=[['acc','Contas'],['tx','Transações'],['cfg','Config'],['log','Logs'],['notif','Avisos'+(unread()?' ('+unread()+')':'')],['bank','Banco']].map(x=>`<button class="${t===x[0]?'':'alt'}" onclick="S.adm='${x[0]}';S.sel=null;if(S.adm==='notif')try{localStorage.setItem('bc_seen',Date.now())}catch(e){};render()">${x[1]}</button>`).join('');
+ let h=`<div class="grid" style="margin-bottom:8px">${tabs}</div>`+(S.msg?`<div class="card ok">${esc(S.msg)}</div>`:'')+(S.err?`<div class="err">${esc(S.err)}</div>`:'');
+ if(t==='acc'){const q=S.q.toLowerCase(),l=S.acc.filter(a=>(a.name+a.char+a.id).toLowerCase().includes(q));
+  h+=`<input placeholder="Pesquisar jogador" value="${esc(S.q)}" oninput="S.q=this.value;render();const i=$('#app input');i.focus();i.setSelectionRange(99,99)">`;
+  if(S.sel){const a=S.acc.find(x=>x.id===S.sel);h+=`<div class="card"><b>${esc(a.char)}</b> (${a.id}) · ${fmt(a.bal)} ${a.blocked?'<span class="out">BLOQUEADA</span>':''}<label>Valor</label><input id="av" type="number" min="0"><div class="grid"><button onclick="admBal('add')">Adicionar</button><button class="red" onclick="admBal('rem')">Remover</button><button class="alt" onclick="admBal('set')">Definir saldo</button></div><label>Conta / Personagem</label><input id="rn" value="${esc(a.name)}"><input id="rc" value="${esc(a.char)}"><div class="grid"><button onclick="admAcc('ren')">Renomear</button><button class="${a.blocked?'':'red'}" onclick="admAcc('blk')">${a.blocked?'Desbloquear':'Bloquear'}</button><button class="alt" onclick="admAcc('adm')">${a.admin?'Remover admin':'Tornar admin'}</button><button class="alt" onclick="S.sel=null;render()">Fechar</button></div></div>`}
+  h+=`<div class="card"><h2>Criar conta</h2><input id="nu" placeholder="Usuário"><input id="nc" placeholder="Personagem"><input id="np" type="password" placeholder="Senha"><button onclick="admCreate()">Criar</button></div><div class="card">${l.map(a=>`<div class="row" onclick="S.sel='${a.id}';render()" style="cursor:pointer"><span>${a.id} · ${esc(a.name)} / ${esc(a.char)} ${a.blocked?'🔒':''}</span><b>${fmt(a.bal)}</b></div>`).join('')}</div>`}
+ if(t==='notif')h+=S.tx.slice(0,40).map(receiptCard).join('')||'<div class="card mut">Sem comprovantes.</div>';
+ if(t==='tx')h+=`<div class="card">${S.tx.slice(0,80).map(x=>`<div class="row"><div><b>${TY[x.type]}</b> ${fmt(x.amt)}<br><span class="mut">${dt(x.ts)} · ${esc(x.fromName)} → ${esc(x.toName)}</span></div>${x.type==='estorno'||S.tx.some(y=>y.ref===x.id)?'<span class="mut">—</span>':`<button class="red" onclick="cancelTx('${x.id}')">Cancelar</button>`}</div>`).join('')||'<div class="mut">Vazio</div>'}</div>`;
+ if(t==='cfg')h+=`<div class="card"><h2>Taxas (%)</h2><label>PIX</label><input id="fp" type="number" value="${S.cfg.pix}"><label>Transferência</label><input id="ft" type="number" value="${S.cfg.tr}"><h2>Investimentos</h2>${S.cfg.prods.map(p=>`<b>${esc(p.name)}</b><div class="grid"><div><label>Dias</label><input id="d${p.id}" type="number" value="${p.days}"></div><div><label>Rend. %</label><input id="r${p.id}" type="number" value="${p.rate}"></div><div><label>Risco %</label><input id="k${p.id}" type="number" value="${p.risk}"></div></div>`).join('')}<button onclick="saveCfg()">Salvar</button></div><div class="card"><h2>Comunicado</h2><input id="nt" maxlength="200"><button onclick="notice()">Publicar</button></div>`;
+ if(t==='log')h+=`<div class="card">${S.log.slice(0,100).map(l=>`<div class="row"><span>${dt(l.ts)} · <b>${esc(l.by)}</b></span><span>${esc(l.action)}: ${esc(l.detail)}</span></div>`).join('')||'<div class="mut">Sem logs</div>'}</div>`;
+ if(t==='bank'){const tot=S.acc.reduce((s,a)=>s+a.bal,0),fees=S.tx.reduce((s,x)=>s+(x.fee||0),0),inv=S.inv.filter(i=>i.st==='ativo').reduce((s,i)=>s+i.amt,0);
+  h+=`<div class="card"><div class="row"><span>Contas</span><b>${S.acc.length}</b></div><div class="row"><span>Coins em circulação</span><b>${fmt(tot)}</b></div><div class="row"><span>Taxas arrecadadas</span><b>${fmt(fees)}</b></div><div class="row"><span>Investido (ativo)</span><b>${fmt(inv)}</b></div><div class="row"><span>Transações</span><b>${S.tx.length}</b></div></div>`}
+ return h+'<button class="alt" style="width:100%" onclick="admLock()">🔒 Fechar painel</button>'}
+function render(){const app=$('#app'),nav=$('#nav');if(!db||!S.ready)return;
+ const a=me();if(!a){nav.innerHTML='';if(!['login','reg','rec'].includes(S.view))S.view='login';app.innerHTML=authView();return}
+ if(a.blocked){logout();return}
+ const V=S.view,body={home,pix:()=>sendView('pix'),transfer:()=>sendView('transfer'),inv:invView,perf:profView,adm:admView,
+ ext:()=>`<div class="card"><h2>Extrato</h2>${txRows(S.tx.filter(t=>t.from===a.id||t.to===a.id),a.id)}</div>`,
+ dep:()=>`<div class="card"><h2>Depósito</h2><p>Depósitos são feitos por um administrador do banco. Informe seu ID: <b>${a.id}</b>.</p></div>`,
+ saq:()=>`<div class="card"><h2>Saque</h2><p>Saques são feitos por um administrador. Informe seu ID: <b>${a.id}</b>.</p></div>`}[V]||home;
+ app.innerHTML=(S.toast?`<div class="card" style="position:sticky;top:6px;z-index:5;border-color:var(--gold)">${esc(S.toast)}</div>`:'')+logo()+'<div style="height:8px"></div>'+(V!=='home'&&!['pix','transfer','inv','ext','perf','adm'].includes(V)?'':'')+body();
+ const tabs=[['home','🏠','Início'],['pix','⚡','PIX'],['ext','📜','Extrato'],['inv','📈','Invest.'],['perf','👤','Perfil']];tabs.push(['adm','🛡','Admin']);
+ nav.innerHTML=tabs.map(t=>`<button class="${V===t[0]?'on':''}" onclick="go('${t[0]}')">${t[1]}<br>${t[2]}</button>`).join('')}
+S.view='login';init();
+</script></body></html>
